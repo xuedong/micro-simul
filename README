@@ -1,0 +1,7 @@
+Pour tout compiler :
+
+- lancer la compilation de tous les programmes avec make
+- lancer la montre avec ./exe.sh montre_rt.ram
+- pour la version rapide, lancer ./exe.sh montre_fast.ram
+
+L'afficheur nécessite d'avoir installé la bibliothèque SFML

@@ -1,0 +1,142 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <link rel="stylesheet" href="basic.css">
+    <title>Le simulateur de circuits</title>
+  </head>
+  <body>
+    <header>Simulateur de circuits</header>
+    <p>Ce document décrit le fonctionement du simulateur de circuits : 
+      format de fichier utilisé pour les circuits, représentation utilisée
+      et structure du code</p>
+    <section>
+      <header>Architecture globale du code</header>
+      <dl class="files">
+	<dt>types.ml</dt>
+	<dd>Définit les types décrivant les circuits et les modes
+	  d'interaction avec le simulateur</dd>
+	<dt>ops.ml</dt>
+	<dd>Contient la description des opérations élémentaires du circuit.</dd>
+	<dt>reader.ml</dt>
+	<dd>Ce module permet de lire un fichier de description de circuit
+	  afin de le simuler. Il permet aussi d'exporter un circuit.</dd>
+	<dt>simul.ml</dt>
+	<dd>Contient le simulateur proprement dit</dd>
+	<dt>simpl.ml</dt>
+	<dd>Contient des fonctions transformant le circuit en un circuit plus simple</dd>
+	<dt>main.ml</dt>
+	<dd>Gère l'interaction avec le monde extérieur : 
+	lecture des arguments, des entrées, et affichage des sorties
+	</dd>
+    </section>
+    <section>
+      <header>Représentation des circuits (haut niveau)</header>
+      <p>Si on exclut les registres, on obtient un circuit combinatoire sans
+	boucles : on peut alors numéroter les nœuds du circuit (les
+	différentes valeurs intermédiaires calculées) de telle façon
+	que le calcul d'un nœud n'utilise que les nœuds de numéro inférieur.
+	On peut aussi considérer les registres comme des choses externes au
+	circuit, et considérer qu'un registre ajoute simplement une entrée 
+	<code>e1</code> et une sortie <code>s1</code> au circuit de telle
+	façon que la valeur de la sortie <code>s1</code> soit donnée en
+	entrée en <code>e1</code> au cycle suivant.</p>
+      <!-- Mérite des schémas -->
+      <p>Une entrée (ou la valeur d'un registre) peut être utilisée plusieurs
+	fois dans un circuit, alors qu'on doit donner une unique valeur
+	à une sortie ou à un registre. C'est pourquoi on récupère la valeur
+	d'une entrée ou d'un registre en l'indiquant dans un nœud (c'est donc
+	le calcul qui donne la valeur de ce nœud), alors que pour les sorties
+	et les nouvelles valeurs des registres, on indique les nœuds qui 
+	porteront la nouvelle valeur.</p>
+    </section>
+    <section>
+      <header>Simulation du circuit</header>
+      <p class="note">Voir <span class="file">simul.ml</span>.
+	<code>simul_step</code> simule un cycle du circuit, et
+	<code>simul_full</code> simule un circuit sur plusieurs cycles</p>
+      <p>La représentation indiquée à la section précédente permet 
+      de simuler efficacement un cycle du circuit : il suffit de 
+      considérer les nœuds dans l'ordre, et d'exécuter l'action indiquée :
+      aller chercher la valeur d'une entrée ou d'un registre, ou bien
+      effectuer un calcul à partir de la valeur d'autres nœuds.</p>
+      <p>Après cette étape, on connait la valeur de tous les nœuds. On 
+	prend alors les valeurs des nœuds qui doivent aller dans les 
+	registres et en sortie, et on retourne la sortie et les nouvelles
+	valeurs des registres. On répète le processus avec les registres
+	modifiées, et de nouvelles entrées.</p>
+    </section>
+    <section>
+      <header>Format de fichier</header>
+      <p class="note">Voir les exemples <span class="file">exemples/FullAdder.net</span> et <span class="file">exemples/Echo.net</span>.</p>
+      <p>Un fichier <code>.net</code> est constitué de plusieurs lignes.
+	Elles sont toutes obligatoires, et l'ordre est important
+	(pour l'instant). Le lecteur est sensible à la casse.
+	<ul>
+	  <li><code>Input(i)</code> où i est le nombre d'entrées du circuit</li>
+	  <li><code>Output(j): 0:s<sub>0</sub> 1:s<sub>1</sub> .. 
+	      (j-1):s<sub>j-1</sub></code> où j est le nombre de sorties,
+	    et les s<sub>k</sub> sont les numéros des nœuds qui contiennent
+	    leurs valeurs</li>
+	  <li><code>Registers(j): 0:s<sub>0</sub> 1:s<sub>1</sub> .. 
+	      (j-1):s<sub>j-1</sub></code> où j est le nombre de registres 
+	    et les s<sub>k</sub> sont les numéros des nœuds qui contiennent
+	    les valeurs qu'ils devront prendre au cycle suivant</li>
+	  <li><code>Nodes(n):</code> où n est le nombre de nœuds</li>
+	  <li>n lignes de la forme <code>i: calcul pour le nœud i</code>,
+	    numérotées à partir de 0, et présentées dans l'ordre</li>
+	</ul>
+	On peut ajouter des commentaires. Ils commencent par le caractère # et 
+	s'étendent jusqu'à la fin de la ligne</p>
+      <p>Un calcul pour un nœud est d'une des formes suivantes :
+	<ul>
+	  <li><code>Input i</code> où i est le numéro d'une entrée. Le nœud 
+	    prendra la valeur donnée en cette entrée.</li>
+	  <li><code>Get i</code> où i est le numéro d'un registre. Le nœud
+	    prendra la valeur du registre au début du cycle.</li>
+	  <li><code>Calc op a<sub>1</sub> ... a<sub>k</sub></code> où op est
+	    le nom d'une opération, et les a<sub>i</sub> les numéros des
+	    opérandes, strictement inférieurs au numéro du nœud actuel.
+	    Il peut ne pas y avoir d'opérandes.</li>
+	</ul>
+	Les différentes opérations sont :
+	<ul>
+	  <li><strong>Zero</strong> donne 0</li>
+	  <li><strong>One</strong> donne 1</li>
+	  <li><strong>Not a</strong> calcule la négation de a</li>
+	  <li><strong>Or a b</strong>, <strong>And a b</strong> et
+	    <strong>Xor a b</strong> calculent respectivement le ou,
+	    et, et ou exclusif de a et b</li>
+	  <li><strong>Mux a b c</strong> donne b si a = 1 et c sinon</li>
+	</ul>
+      </p>
+    </section>
+    <section>
+      <header>Compilation et lancement</header>
+      <p>Il suffit d'entrer la commande <code>make</code> dans le dossier
+	du simulateur pour le compiler.</p>
+      <p>Pour le lancer, utiliser <code>./simul [options] &lt;nom du fichier&gt;</code>. Les options sont :
+        <ul>
+          <li><strong>-n &lt;num&gt; ou --nb_tours &lt;num&gt;</strong> faire tourner la simulation pendant &lt;num&gt; tours (ou continuer à l'infini si &lt;num&gt; est négatif), la valeur par défaut est -1</li>
+          <li><strong>-s ou --stats</strong> afficher les statistiques du circuit (nombre de nœuds et profondeur)</li>
+          <li><strong>-b ou --bare</strong> n'afficher que l'essentiel (pas de prompt)</li>
+          <li><strong>-r &lt;fichier.ram&gt; ou --ram &lt;fichier.ram&gt;</strong> utiliser le fichier &lt;fichier.ram&gt; en tant que RAM.</li>
+        </ul>
+      </p>
+    </section>
+    <section>
+      <header>Module RAM</header>
+      <p>Le module RAM permet d'interagir avec de la mémoire RAM. Pour l'instant, il communique avec le circuit d'une manière rigide : il lit 129 bits de sortie du processeur, les deux premiers mots de 32 bits indiquent deux adresses à lire, le bit suivant vaut 1 si on veut effectuer une écriture, et dans ce cas, les deux mots de 32 bits suivant indiquent l'adresse et la valeur à écrire. À l'entrée, le module donne deux mots de 32 bits situés aux deux adresses à lire données au cycle précédent.</p>
+      <p>Conventions de fonctionement : la RAM est un tableau de mots de 32 bits, l'adresse 0 désigne le premier, 1 le deuxième (ils ne se recouvrent pas). Toutes les adresses sont données avec le bit de poids faible en tête.</p>
+      <p>Les valeurs initiales sont lues depuis un fichier (voir <code>exemples/test.ram</code>) suivant un format précis. La première ligne contient un entier <code>n</code> qui indique la taille de la ram, en décimal. Les lignes suivantes contiennent soit un comentaire (commençant par <code>#</code>), soit la valeur de la case mémoire à laquelle elles correspondent. Si la ligne commence par <code>b</code>, le nombre est lu en binaire, si elle commence par <code>x</code>, c'est de l'héxadécimal. Dans tous les cas, c'est le chiffre de poids faible qui est le plus à gauche. Les espaces sont acceptés dans ces nombres, et le nombre est automatiquement complété à droite par des zéros si nécessaire.</p>
+      <p>Pour utiliser le module RAM, il faut invoquer le simulateur avec l'option <code>--ram fichier.ram</code>. À chaque cycle, sont affichés les valeurs données en entrée du processeur, les emplacements lus, et éventuellement la position et la valeur de la case mémoire modifiée. Les adresses sont indiquées en hexadécimal, les valeurs en héxadécimal, puis interprétées comme des entiers signées, non signées, et en binaire. À chaque cycle, il faut appuyer sur entrée pour lancer le cycle suivant.</p>
+    </section>
+    <section>
+      <header>Programme de simplification</header>
+      <p>Le programme <code>simpl</code> génère une version simplifiée du circuit donné. On l'invoque avec la commande <code>simpl FichierEntree.net FichierSortie.net</code>. Il ne fait que diminuer la profondeur et le nombre de portes logiques du cricuit.</p>
+      <p>En interne, le programme utilise plusieurs passes de réduction. La fonction <code>truncate</code> se charge de supprimer les nœuds dont la valeur ne sert ni à calculer la valeur d'un registre, ni celle d'une sortie. Dans <code>reduce</code>, les nœuds sont remplacés par une valeur plus simple si une constante apparaissait comme un des arguments : par exemple <code>Not(One)</code> est remplacé par <code>Zero</code> et <code>Or(Zero,j)</code> devient <code>j</code>. Les nœuds de départ ne sont pas supprimés, il faut réutiliser la fonction <code>reduce</code> pour obtenir un circuit réduit. Enfin <code>cse</code> se charge d'éliminer les calculs dupliqués, en identifiant des nœuds ayant la même valeur. Deux nœuds sont considérés comme équivalents si ils effectuent la même opération, et leurs arguments sont équivalents.</p>
+      <p>Certaines simplifications ne sont pas encore prises en charge : par exemple, les doubles <code>Not</code> ne sont pas simplifiés, ainsi que les apparitions du nœud <code>Id</code>, qui calcule la fonction identité. La fonction <code>cse</code> ne considère pas la commutativité et l'associativité des opérations <code>Or</code>, <code>And</code> et <code>Xor</code>, ni des relations plus complexes (par exemple les lois de De Morgan ou l'idempotence/la nilpotence).</p>
+      <p>(Note : le simplificateur ne marche pas encore bien avec l'ajout récent des mux, c'est pourquoi il n'est pas inclus dans cette version)</p>
+    </section>
+  </body>
+</html>

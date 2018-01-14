@@ -1,0 +1,6 @@
+Input(1)
+Output(1): 0:1
+Registers(1): 0:0
+Nodes(2):
+0: Input 0
+1: Get 0

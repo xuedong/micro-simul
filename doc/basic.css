@@ -1,0 +1,41 @@
+html {
+    background-color : #EEE;
+}
+
+
+body { max-width : 800px; margin : auto;
+       margin-top : 30px; margin-bottom : 30px;
+       border : 1px solid #77A;
+       padding : 20px;
+       padding-left : 40px;
+       background-color : white;
+}
+
+header {
+    font-family: georgia, serif;
+    font-size : 2em;
+    margin-left : -20px;
+}
+
+section header {
+    font-size : 1.5em;
+}
+
+subsection header {
+    font-size : 1.2em;
+}
+
+section {
+    margin-left : 40px;
+}
+
+code, .file { 
+    font-family: monospace;
+    background-color : #EEE;
+    font-style : none;
+}
+
+dt { font-weight : bold; }
+
+.note { font-style : italic; 
+      margin-top : 0px;}

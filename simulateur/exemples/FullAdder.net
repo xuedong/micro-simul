@@ -1,0 +1,13 @@
+Input(3)
+Output(2): 0:4, 1:7
+Registers(0)
+Nodes(8):
+0: Input 0      # a
+1: Input 1      # b
+2: Input 2      #c
+3: Calc Xor 0 1 #d
+4: Calc Xor 3 2 #e
+# Full line comment
+5: Calc And 3 2
+6: Calc And 0 1
+7: Calc Or 5 6

@@ -1,0 +1,199 @@
+<!doctype html>
+<html>
+  <head>
+    <title>Description de circuits</title>
+    <meta charset="utf8">
+    <link rel="stylesheet" href="basic.css">
+  </head>
+  <body>
+    <header>Description de circuits</header>
+      <p>
+        Nous avons opté pour une représentation haut niveau des circuits logiques s’appuyant
+        sur Caml, cette solution apportant plusieurs avantages et en particulier celui de pouvoir
+        générer une <i>net-list</i> assez facilement. La <i>net-list</i> est, elle, de format «&nbsp;maison&nbsp;».
+      </p>
+    <section>
+      <header>Introduction</header>
+      <p>Le langage de description est intégré dans OCaml. La description
+	est ensuite exportée en <i>net-list</i> à l'éxécution.
+	Ce choix nous offrait plusieurs avantages :
+	<ul>
+	  <li>pas besoin de parser le fichier ni de le compiler, Caml s’en charge
+	  (facilité de génération de <i>net-list</i>)</li>
+          <li>possibilités d’assemblage de fonctions et d’utilisation de boucles pour créer des
+          circuits de taille arbitraire.</li>
+        </ul>
+        Les valeurs
+	internes au circuit sont donc représentées par des valeurs OCaml
+	(bien sûr, il est impossible d'accéder à leur valeur, puisqu'elle
+	dépend des entrées du circuit qui ne sont pas encore accessibles 
+	à cette étape). Elles peuvent donc être copiées et 
+	stockées dans des tableaux, des couples, des listes, ... 
+	(ce qui ne coûte rien : ce sont simplement des fils !).</p>
+    </section>
+    <section>
+      <header>Syntaxe</header>
+      <p>On peut créer des valeurs de plusieurs manières : en récupérant une
+	valeur d'entrée avec la fonction <code>input</code> (les entrées
+	sont numérotées), par une constante (<code>zero</code> ou 
+	<code>one</code>), ou en combinant des valeurs déjà existantes.
+	Pour cela, il y a plusieurs fonctions : <code>nnn</code> est la négation,
+	les opérateurs <code>&&&</code>, <code>|||</code> et <code>^^</code>
+	sont respectivement le et binaire, le ou binaire, et le ou exclusif et
+	<code>mux</code> est le multiplexeur</p>
+	
+      <p>Chaque appel à un de ces opérateurs (au moment où il est exécuté par
+	OCaml) crée un nouveau nœud dont la valeur est le résultat de
+	l'opération. Il est possible de créer des fonctions plus complexes,
+	et les nœuds seront recréés à chaque appel de la fonction. Par exemple, 
+	<code>and</code> est l'opérateur ET recodé avec la fonction <code>mux</code>,
+	<code>half_adder</code> est un demi-additionneur, et 
+	<code>carryAdder</code> prend deux tableaux et renvoie les sommes 
+	dans un tableau, les retenues dans un autre.</p>
+      <pre>let and a b = mux a a b
+
+let half_adder a b = (a ^^ b, a &&& b)
+
+let carry_adder a b =
+  let res = array_map2 half_adder a b in
+  (Array.map fst res, Array.map snd res)</pre>
+    </section>
+    <section>
+      <header>Fonctionement interne</header>
+      <p class="note">Le fonctionement interne est géré dans le fichier 
+      <span class="file">numbered.ml</span></p>
+      <p>En interne, le programme maintient une liste des nœuds dans un vecteur
+	(tableau extensible). À chaque utilisation d'une fonction créant un nœud, 
+	on crée un nouveau nœud auquel on associe la prochaine case du tableau,
+	et on stocke dans le tableau le calcul correspondant au nœud.</p>
+      <p>Les valeurs de type <code>noderef</code> manipulées par le code
+	OCaml sont en fait les entiers correspondant au numéro du nœud dans
+	le tableau. Puisqu'il faut créer une valeur avant de créer des valeurs
+	qui en dépendent, le tableau est directement ordonné selon un tri
+	topologique et on peut donc l'utiliser sans traitement particulier
+	comme <i>net-list</i>.</p>
+      <p>Les registres sont alloués de la même façon : on note le numéro
+	du nœud qui servira à donner la valeur au prochain tour,
+	et on renvoie un nœud <code>Get i</code> donnant la valeur du 
+	registre au tour actuel</p>
+    </section>
+    <section>
+      <header>Gestion des registres</header>
+      <p>Un registre est créé via l'appel <code>register ()</code>. Cette 
+	fonction renvoie une paire <code>(val, set_val)</code> où
+	<code>val</code> est la valeur actuelle du registre, et 
+	<code>set_val</code> est une fonction qui doit être appelée avec
+	un nœud pour donner la valeur du registre au tour suivant. Si elle
+	n'est pas appelée, une erreur se produira à la génération du circuit.
+      </p>
+      <p>Exemple : un compteur modulo 2</p>
+      <pre>let cm2 x =
+  let (state, set_state) = register () in
+  set_state (x ^^ state);
+  let r = x &&& state in
+  (state, r)</pre>
+    </section>
+    <section>
+      <header>Génération du circuit</header>
+      <p>Pour générer effectivement le circuit, il faut appeler la fonction
+	<code>serialize</code> avec en premier argument le nombre d'entrées
+	du circuit, et en deuxième argument la liste des nœuds
+	qui représentent les sorties du circuit. Il est ainsi possible de
+	générer le circuit du compteur modulo 2 de cette façon :</p>
+      <pre>
+module N = Numbered.Make(struct let unique = 42 end)
+open N
+
+let cm2 x =
+  let (state, set_state) = register () in
+  set_state (x ^^ state);
+  let r = x &&& state in
+  (state, r)
+
+let _ = 
+  let i = input 0 in
+  serialize 1 [cm2 i]
+      </pre>
+      <p>Il faut ensuite compiler et exécuter ce programme. La <i>net-list</i> est 
+	alors écrite sur la sortie standard.</p>
+      <p><code>Numbered.Make</code> est un foncteur (module paramétré) 
+	pour s'assurer que le vecteur interne stockant la description 
+	du circuit ne soit pas partagé entre les utilisations du module.</p> 
+    </section>
+    <section>
+      <header>Description de la <i>net-list</i></header>
+      <p>L’exécution d’un tel circuit étant difficile telle quelle, il faut aplatir celui-ci en un
+        circuit linéaire ne comportant que des opérations simples, appelé <i>net-list</i>.</p>
+      <p>
+        La syntaxe d’un fichier <i>net-list</i>, contrairement à celle d’un circuit en Caml, est très
+        stricte. En effet, toutes les lignes sont obligatoires et leur ordre est important. De plus,
+        le lecteur de <i>net-list</i> est sensible à la casse.</p>
+      <p>
+        Nous avons aussi écrit un optimisateur de <i>net-list</i>, qui recherche les doublons et les
+        fusionne. Il est arrivé qu’il réduise la taille de certaines <i>net-list</i> par un facteur 3.
+      </p>
+      <subsection>
+      <header>En-tête</header>
+        Le début du fichier est consacré aux déclarations des variables externes (entrées/sorties),
+        registres et nombre de nœuds.
+        Il contient quatre lignes qui sont de la forme suivante :
+        <ul>
+          <li><code>Input(i)</code> où i est le nombre d’entrées du circuit</li>
+          <li><code>Output(j): 0:s0 1:s1 ... (j-1):sj-1</code> où <code>j</code> est le nombre de sorties, et les <code>sk</code> sont les
+numéros des nœuds qui contiennent leurs valeurs ;</li>
+          <li><code>Registers(j): 0:s0 1:s1 ... (j-1):sj-1</code> où <code>j</code> est le nombre de registres et les <code>sk</code> sont
+les numéros des nœuds qui contiennent les valeurs qu’ils devront prendre au cycle
+suivant ;</li>
+          <li><code>Nodes(n):</code> où <code>n</code> est le nombre de nœuds.</li>
+        </ul>
+      </subsection>
+      <subsection>
+      <header>Corps</header>
+      <p>Cet en-tête est suivi de n lignes de la forme <code>i: calcul_pour_le_nœud_i</code>,
+      numérotées à partir de 0, et présentées dans l’ordre.</p>
+      <p>On peut ajouter des commentaires. Ils commencent par le caractère <code>#</code> et s’étendent
+      jusqu’à la fin de la ligne.</p>
+      <p>Un calcul pour un nœud est d’une des trois formes suivantes :
+        <ul>
+          <li><code>Input i</code> où <code>i</code> est le numéro d’une entrée. Le nœud prendra
+          la valeur donnée en cette entrée</li>
+          <li><code>Get i</code> où <code>i</code> est le numéro d’un registre. Le nœud prendra
+          la valeur du registre au début du cycle</li>
+          <li><code>Calc op a1 ... aj</code> où <code>op</code> est le nom d’une opération, et
+          les <code>ak</code> les numéros des opérandes, strictement inférieurs au numéro du nœud
+          actuel. Il peut ne pas y avoir d’opérandes, dans le cas de <code>Zero</code> ou <code>One</code>.</li></ul></p>
+        <p>Les différentes opérations sont :
+          <ul><li><code>Zero</code> donne <code>0</code></li>
+          <li><code>One</code> donne <code>1</code></li>
+          <li><code>Not a</code> calcule la négation de <code>a</code></li>
+          <li><code>Or a b</code>, <code>And a b</code> et <code>Xor a b</code> calculent respectivement le ou, et, ou exclusif de <code>a</code> et <code>b</code></li>
+          <li><code>Mux a b c</code> renvoie <code>b</code> (resp. <code>c</code>) si <code>a</code> vaut <code>1</code> (resp. <code>0</code>).</li></ul>
+        </p>
+      </subsection>
+      <subsection>
+        <header>Exemples</header>
+        <p>full adder :</p>
+<pre>Input(3)
+Output(2): 0:4, 1:7
+Registers(0)
+Nodes(8):
+0: Input 0
+1: Input 1
+2: Input 2
+3: Calc Xor 0 1 # Comment
+4: Calc Xor 3 2
+# Full line comment
+5: Calc And 3 2
+6: Calc And 0 1
+7: Calc Or 5 6</pre>
+        <p>simple registre :</p>
+<pre>Input(1)
+Output(1): 0:1
+Registers(1): 0:0
+Nodes(2):
+0: Input 0
+1: Get 0</pre>
+      </subsection>
+    </section>
+  </body>
+</html>

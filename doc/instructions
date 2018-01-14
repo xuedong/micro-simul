@@ -1,0 +1,188 @@
+# Jeu d'instructions RISC pour le processeur :
+
+## Architecture générale
+Le jeu d'instruction est un peu inspiré de MIPS et d'autres jeux d'instruction
+RISC. Le processeur a 32 registres qui peuvent être manipulé de façon uniforme,
+même si certains ont des roles spéciaux.
+Le processeur manipule des mots de 32 bits. Une adresse correspond à un mot, et
+les mots correspondant à des adresses différentes ne se recouvrent pas (c'est à
+dire qu'on ne peut pas adresse au niveau des octets). La même mémoire est
+utilisée pour les instructions et le code, elle sert aussi à interagir avec
+l'exérieur en écrivant à des adresses spéciales. 
+Les instructions sont toutes codées sur 32 bits.
+
+
+## Définitions 
+ - SNC (ou small numeric constant) : un petit nombre qu'on peut mettre à la
+   place d'un registre si l'instruction le permet en mettant à 1 le bit
+   snci de l'instruction. Elle est interprétée comme un nombre signée, sauf dans
+   le cas des instructions explicitement non-signées (comparaisons, divisions)
+ - $i : note la valeur du registre i ou la petite constante numérique 
+   correspondante
+ - Constante immédiate (notée C) : valeur de 16 bits codée avec l'instruction
+ - Opération immediate : 
+   format <préfixe conditionnel> <opcode> <reg1> <reg2> <immediate>
+   prend deux registres et une constante immédiate, pas de support des SNC
+ - Accès mémoire : noté [adresse] dans l'explication des instructions, ils
+   n'interviennent que dans les instructions load et store
+
+## Liste des instructions et encodage
+
+### Encodage des instructions :
+(Ce schéma ne montre pas très bien ce qui peut être utilisé en même temps
+ parce que sinon il ne serait pas plan)
+      __________________________________________________________________________
+0    |  Préfixe conditionnel                                                    |
+1    |                                                                          |
+2    |__________________________________________________________________________|
+3    |                                                                          |
+4    |  Gros opcode                                                             |
+5    |__________________________________________________________________________|
+6    |                                                                          |
+7    |Registre                                                                  |
+8    | $0                                                                       |
+9    |                                                                          |
+10   |__________________________________________________________________________|
+11   |                                                                          |
+12   |Registre                                                                  |
+13   | $1                                                                       |
+14   |(ou snc1)                                                                 |
+15   |__________________________________________________________________________|
+16   |              | Registre 2                                                |
+17   |Immediate     | (ou snc 2)                                                |
+18   |   C          |    $2                                                     |
+19   |16 bits       |                                                           |
+20   |signés        |___________________________________________________________|
+21   |              | Options pour|  Registre3                     | Table :  0 |
+22   |              |  shift      |  (ou snc3)                     |          1 |
+23   |              | (shopt0-4)  |      $3                        |          2 |
+24   |              |             |                                |          3 |
+25   |              |_____________|________________________________|____________|
+26   |              | Position (1)   |___opt3_______|             |             |
+27   |              | des SNC  (2)                  | Registre 4  |             |
+28   |              |__________(3)__________________|    $4       |             |
+29   |              | Options                       |             |             |
+30   |              | (opt0-opt2)                   |_____________|             |
+31   |______________|___________________________________________________________|
+
+### Registres spéciaux 
+Registre zero :
+ - on lit toujours 0 dedans
+ - toutes les écritures sont ignorées
+
+Registre ip :
+ - il contient l'adresse de l'instruction courante
+ - si on écrit dedans, la valeur sera utilisée comme adresse de l'instruction
+ suivante (il n'y a donc pas besoin d'instruction jump)
+ - sinon, il est incrémenté automatiquement
+
+Registre flags (en partant du bit de poids faible) :
+ - zero (premier résultat ($0) de l'opération précédente est 0)
+ - lte (less than or equal : modifié par cmp)
+ - gte (gretaer than or equal : modifié par cmp)
+
+### Préfixes conditionnels
+L'éxécution d'une instruction peut être conditionelle (cela permet notamment
+d'avoir des instructions de branchement). 
+111 = s'éxécute quelque soit l'état des flags 
+  (y compris lorque ni lte ni gte ne sont actifs)
+000 = s'éxécute si le flag "zero" est actif
+abc = * a : s'éxécute si lte=1, gte=0
+      * b : s'éxécute si lte=1, gte=1
+      * c : s'éxécute si lte=0, gte=1
+
+### Gros opcodes
+Le "gros opcode" détermine la catégorie de l'instruction à exécuter. Les
+opérations immédiates doivent avoir un gros opcode dédié, sinon on ne pourrait
+pas encoder le préfixe conditionnel (3 bits), les 2 registres (2x5 bits) et la
+constante immédiate (16 bits).
+
+Les opérations immédiates sont les suivantes : 
+0 = addlo $0, $1, C
+  $0 = $1 + C 
+1 = addhi $0, $1, C
+  $0 = $1 * 2^16 + C
+2 = load $0, $1, C
+  $0 = [$1+C]
+3 = store $0, $1, C
+  [$1+C] = $0
+
+Autres familles d'opérations :
+4 = Opérations arithmétiques et décalages
+  - lis les trois derniers bits (opt0-2) pour déterminer l'opération en question
+  - voir détails plus loin
+5 = cmp $1,$2
+  - opt0 : détermine si la comparaison est signée ou nom
+  - utilise les bits SNC pour déterminer si il y a une constante
+  - modifie les flags en fonction
+  - met le flag "zero" à 0
+6 = Opération bit à bit
+  - permet d'effectuer des opérations bit à bit générales
+  - voir plus loin dans la documentation
+
+### Opérations arithmétiques 
+les trois bits d'opt0-2 permettent de déterminer l'opération à effectuer
+
+Opérations à un résultat et trois arguments, prennent en compte les trois bits SNC
+0 = muladd $0,$1,$2,$3 : $0 = $1+$2*$3
+1-3 =  shiftadd (trois variantes : 
+       1 = saradd si arithmétique droite
+       2 = slladd si le shift est logique gauche, 
+       3 = slradd si logique droite)
+  (shift)add $0, $1, $2, $3 : $0 = $1 + (shift)($2, $3)
+4 = mul $0, $1, $2, $3 : ($0,$1)=$2*$3
+  Il s'agit d'une multiplication à résultat de 64 bits.
+  ($0, $1) note le nombre de 64 bits égal à $0*2^32+$1
+  le drapeau "zero" est mis si $0 vaut 0
+  Elle est signée si snc1 vaut 1, non-signée sinon
+5 = Décalages et rotations (voir section dédiée)
+  utilise les bits shopt0-4 et les registres $0 (destination), $1 (source), 
+  $2 (décalage), prend en compte les flags snc1-2
+
+
+#### Décalages, rotations et manipulation de bits : 
+ les cinq bits de shopt0-shopt4 sont utilisés de la façon suivante :
+ shopt0 : sens du décalage (0 = left, 1 = right)
+ shopt1 : type de décalage (0 = logique, 1 = arithmétique)
+ shopt2-4 : opération effectuée
+   0 = set ou clear (met un bit à 0 ou 1 suivant shopt1)
+   1 = get : prend uniquement le bit choisi par $2, met dans $0 (idem)
+        shopt1 sert éventuellement à complémenter si il vaut 1
+   2 = select (met à 0 ou 1 une série de bits suivant shopt1)
+   3 = not sur les $2 bits choisis (depuis la gauche ou la droite)
+   4 = shift : décale de $2 les bits de $1
+   5 = rotate : fait tourner les bits de $1 de $2 (ignore arithmétique/logique)
+
+### Opération bit à bit : 
+Cette opération permet d'éxécuter n'importe quelle fonction booléenne bit à bit
+à partir de sa table de vérité.
+
+Il y a deux formats suivant la valeur du dernier bit opt2 de l'instruction : 
+ - si c'est 0, c'est l'opération "bitwisei" (i comme "immediate")
+  notation : bitwisei $0, $1, $2, (table en binaire)
+   * on prend en paramètre les trois registres $0, $1, $2
+   * on prend en compte snc1-2
+   * les bits table0-4 donnent la table de vérité d'une fonction 
+   booléenne (résultats sur 00,01,10,11)
+  exemple : not $0, $1 est bitwisei $0, $1, zero,  1100
+            and $0, $1, $2 est bitwisei $0, $1, $2, 0001
+
+ - si c'est 1, c'est l'opération "bitwised" (d comme "dynamic")
+  notation : bitwised $0, $1, $2, $3, $4
+   * on prend cinq registres en paramètres
+   * les SNC sont ignorés (pas la place de le coder)
+   * les 8 bits de poids faible détermine une fonction booléenne phi :
+       pour avoir la valeur de phi(a,b,c), on lit le bit de position
+       (en binaire) abc dans $4
+   * on applique phi bit à bit :
+      $0 = phi_$4($1,$2,$3)
+
+  exemple : mux bit à bit
+     addlo r31, zero, 11001010b (on charge la table de vérité dans r31)
+     bitwised r8, r9, r10, r11, r31 (r9 décide si on copie le bit de r10 ou r11)
+
+## Encodage des constantes numériques
+ Toutes les constantes numériques sont représentées avec le bit de poids
+ faible en premier, mais le sens des décalages se réfère à l'ordre
+ "naturel" des bits où le bit de poids fort est en premier
+ (un décalage vers la droite est donc une division)

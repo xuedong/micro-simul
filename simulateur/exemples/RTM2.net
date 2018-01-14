@@ -1,0 +1,12 @@
+Input(2)
+Output(2): 0:7, 1:6
+Registers(3): 0:1, 1:5, 2:4
+Nodes(8):
+0: Input 0
+1: Input 1
+2: Get 0
+3: Get 2
+4: Calc Not 3
+5: Calc Mux 3 2 0
+6: Calc Mux 3 0 2
+7: Get 1

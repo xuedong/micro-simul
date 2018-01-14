@@ -1,0 +1,3 @@
+true: use_menhir
+true: use_bigarray
+true: use_unix
