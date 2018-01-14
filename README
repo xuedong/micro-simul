@@ -5,3 +5,5 @@ Pour tout compiler :
 - pour la version rapide, lancer ./exe.sh montre_fast.ram
 
 L'afficheur nécessite d'avoir installé la bibliothèque SFML
+
+[![Documentation Status]]
